@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect } from 'react';
@@ -12,17 +13,40 @@ import {
 } from "@/components/ui/dialog";
 import { Trash2, Edit, Plus, Upload, FileSpreadsheet } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { useCallback } from 'react';
 
-const SparePartsManager = () => {
-  const [spareParts, setSpareParts] = useState([]);
-  const [selectedParts, setSelectedParts] = useState([]);
+interface SparePart {
+  id: number;
+  equipment: string;
+  itemDescription: string;
+  oemPartNumber: string;
+  oem: string;
+  qty: string;
+  igtPartNumber: string;
+  location: string;
+  subLocation: string;
+}
+
+interface FormData {
+  equipment: string;
+  itemDescription: string;
+  oemPartNumber: string;
+  oem: string;
+  qty: string;
+  igtPartNumber: string;
+  location: string;
+  subLocation: string;
+}
+
+export default function SparePartsManager() {
+  const [spareParts, setSpareParts] = useState<SparePart[]>([]);
+  const [selectedParts, setSelectedParts] = useState<number[]>([]);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
-  const [currentPart, setCurrentPart] = useState(null);
+  const [currentPart, setCurrentPart] = useState<SparePart | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Form state for new/edit part
-  const [formData, setFormData] = useState({
+  const initialFormData: FormData = {
     equipment: '',
     itemDescription: '',
     oemPartNumber: '',
@@ -31,108 +55,94 @@ const SparePartsManager = () => {
     igtPartNumber: '',
     location: '',
     subLocation: ''
-  });
+  };
 
-  // Handle form input changes
-  const handleInputChange = (e) => {
+  const [formData, setFormData] = useState<FormData>(initialFormData);
+
+  const handleInputChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
     setFormData(prev => ({
       ...prev,
       [name]: value
     }));
-  };
+  }, []);
 
-  // Handle part selection
-  const handlePartSelection = (partId) => {
+  const handlePartSelection = useCallback((partId: number) => {
     setSelectedParts(prev => {
       if (prev.includes(partId)) {
         return prev.filter(id => id !== partId);
       }
       return [...prev, partId];
     });
-  };
+  }, []);
 
-  // Handle bulk delete
-  const handleBulkDelete = () => {
+  const handleBulkDelete = useCallback(() => {
     setSpareParts(prev => prev.filter(part => !selectedParts.includes(part.id)));
     setSelectedParts([]);
-  };
+  }, [selectedParts]);
 
-  // Handle delete all
-  const handleDeleteAll = () => {
+  const handleDeleteAll = useCallback(() => {
     setSpareParts([]);
     setSelectedParts([]);
-  };
+  }, []);
 
-  // Handle single part delete
-  const handleDelete = (partId) => {
+  const handleDelete = useCallback((partId: number) => {
     setSpareParts(prev => prev.filter(part => part.id !== partId));
-  };
+  }, []);
 
-  // Handle edit
-  const handleEdit = (part) => {
+  const handleEdit = useCallback((part: SparePart) => {
     setCurrentPart(part);
     setFormData(part);
     setIsEditDialogOpen(true);
-  };
+  }, []);
 
-  // Handle save (new/edit)
-  const handleSave = () => {
+  const handleSave = useCallback(() => {
     if (currentPart) {
-      // Edit existing part
       setSpareParts(prev => prev.map(part => 
         part.id === currentPart.id ? { ...formData, id: part.id } : part
       ));
       setIsEditDialogOpen(false);
     } else {
-      // Add new part
       setSpareParts(prev => [...prev, { ...formData, id: Date.now() }]);
       setIsAddDialogOpen(false);
     }
-    setFormData({
-      equipment: '',
-      itemDescription: '',
-      oemPartNumber: '',
-      oem: '',
-      qty: '',
-      igtPartNumber: '',
-      location: '',
-      subLocation: ''
-    });
+    setFormData(initialFormData);
     setCurrentPart(null);
-  };
+  }, [currentPart, formData, initialFormData]);
 
-  // Handle file upload
-  const handleFileUpload = async (e) => {
-    const file = e.target.files[0];
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     const reader = new FileReader();
     
-    reader.onload = (event) => {
-      const workbook = XLSX.read(event.target.result, { type: 'binary' });
+    reader.onload = (event: ProgressEvent<FileReader>) => {
+      const binaryStr = event.target?.result;
+      if (typeof binaryStr !== 'string') return;
+
+      const workbook = XLSX.read(binaryStr, { type: 'binary' });
       const firstSheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[firstSheetName];
       const data = XLSX.utils.sheet_to_json(worksheet);
       
-      // Transform data to match our structure
       const transformedData = data.map(row => ({
         id: Date.now() + Math.random(),
-        equipment: row.Equipment || '',
-        itemDescription: row['Item Description'] || '',
-        oemPartNumber: row['OEM Part Number'] || '',
-        oem: row.OEM || '',
-        qty: row.QTY || '',
-        igtPartNumber: row['IGT Part Number'] || '',
-        location: row.Location || '',
-        subLocation: row['Sub Location'] || ''
+        equipment: (row as any).Equipment || '',
+        itemDescription: (row as any)['Item Description'] || '',
+        oemPartNumber: (row as any)['OEM Part Number'] || '',
+        oem: (row as any).OEM || '',
+        qty: (row as any).QTY || '',
+        igtPartNumber: (row as any)['IGT Part Number'] || '',
+        location: (row as any).Location || '',
+        subLocation: (row as any)['Sub Location'] || ''
       }));
       
       setSpareParts(prev => [...prev, ...transformedData]);
     };
     
     reader.readAsBinaryString(file);
-  };
+  }, []);
 
-  // Filter parts based on search term
   const filteredParts = spareParts.filter(part => 
     Object.values(part).some(value => 
       String(value).toLowerCase().includes(searchTerm.toLowerCase())
@@ -231,7 +241,7 @@ const SparePartsManager = () => {
             <Button 
               variant="outline"
               className="flex items-center gap-2"
-              onClick={() => document.getElementById('file-upload').click()}
+              onClick={() => document.getElementById('file-upload')?.click()}
             >
               <FileSpreadsheet className="h-4 w-4" />
               Import Excel
@@ -397,6 +407,4 @@ const SparePartsManager = () => {
       </Dialog>
     </div>
   );
-};
-
-export default SparePartsManager;
+}
